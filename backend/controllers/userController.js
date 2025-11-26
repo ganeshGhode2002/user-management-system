@@ -1,17 +1,16 @@
-// controllers/userController.js
 const path = require('path');
 const fs = require('fs');
 const bcrypt = require('bcrypt');
 const multer = require('multer');
 const User = require('../models/user.model');
 
-// ---------- Multer setup ----------
+
 const uploadFolder = path.join(__dirname, '..', 'uploads');
 if (!fs.existsSync(uploadFolder)) {
   fs.mkdirSync(uploadFolder);
 }
 
-// storage config
+
 const storage = multer.diskStorage({
   destination: function (req, file, cb) {
     cb(null, uploadFolder);
@@ -23,7 +22,7 @@ const storage = multer.diskStorage({
   }
 });
 
-// file filter for images
+
 const fileFilter = (req, file, cb) => {
   if (file.mimetype.startsWith('image/')) cb(null, true);
   else cb(new Error('Only image files are allowed!'), false);
@@ -35,7 +34,7 @@ const upload = multer({
   limits: { fileSize: 2 * 1024 * 1024 } // 2 MB per file
 });
 
-// helper to delete files (safe)
+
 const safeUnlink = (filepath) => {
   if (!filepath) return;
   const full = path.join(uploadFolder, path.basename(filepath));
@@ -50,10 +49,8 @@ const safeUnlink = (filepath) => {
 
 
 
-// POST /api/users/register
-// Accepts multipart/form-data: fields + files (image1..image4)
 const registerUser = async (req, res) => {
-  // we need to run multer here to parse files + form data
+
   const uploader = upload.fields([
     { name: 'image1', maxCount: 1 },
     { name: 'image2', maxCount: 1 },
@@ -69,9 +66,7 @@ const registerUser = async (req, res) => {
 
       const { email, password, confirmPassword, gender, city } = req.body;
       let education = req.body.education || [];
-      // education may come as single string or array from form-data
       if (typeof education === 'string') {
-        // if comma separated? often it will be single value
         education = [education];
       }
 
@@ -82,7 +77,7 @@ const registerUser = async (req, res) => {
         return res.status(400).json({ success: false, message: 'Passwords do not match' });
       }
 
-      // check existing
+
       const existing = await User.findOne({ email: email.toLowerCase().trim() });
       if (existing) {
         return res.status(400).json({ success: false, message: 'Email already registered' });

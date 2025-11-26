@@ -1,6 +1,3 @@
-// config/db.js
-// Simple and compatible MongoDB connect function for mongoose v7+
-
 const mongoose = require('mongoose');
 
 const connectDB = async (mongoUri) => {
@@ -8,8 +5,6 @@ const connectDB = async (mongoUri) => {
     if (!mongoUri) {
       throw new Error('MONGO_URI not provided');
     }
-
-    // In Mongoose v7+, don't pass useNewUrlParser/useUnifiedTopology options.
     await mongoose.connect(mongoUri);
 
     console.log('✅ MongoDB connected');
