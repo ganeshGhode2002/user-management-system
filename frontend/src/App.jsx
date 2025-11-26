@@ -1,13 +1,13 @@
-import { useState } from 'react'
-import reactLogo from './assets/react.svg'
-import viteLogo from '/vite.svg'
+import React from "react"
 import './App.css'
 
 function App() {
-  const [count, setCount] = useState(0)
 
   return (
-    <div claasname="text-red">Creating Full User Management App</div>
+    <h1 class="text-3xl bg-amber-600 font-bold font-bold underline">
+      <div className="p-6 bg-sky-500 text-white rounded-md">Tailwind v4 works ✅</div>
+
+    </h1>
   )
 }
 
