@@ -1,7 +1,4 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
-
+@import "tailwindcss";
 /* custom base styles without using @apply to avoid postcss/apply issues */
 :root {
   --accent: #4f46e5;

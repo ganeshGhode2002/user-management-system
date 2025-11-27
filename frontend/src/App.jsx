@@ -1,10 +1,16 @@
-import './App.css'
+import React from "react";
+import { BrowserRouter } from "react-router-dom";
+import MainLayout from "@/layouts/MainLayout";
+import AppRoutes from "@/router";
 
-function App() {
-
+export default function App() {
   return (
-    <div className="">Hello Starting project....</div>
-  )
+    <BrowserRouter>
+      <MainLayout>
+        <AppRoutes />
+      </MainLayout>
+    </BrowserRouter>
+  );
 }
 
-export default App
+
