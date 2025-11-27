@@ -7,7 +7,8 @@ const {
   getUsers,
   getUserById,
   updateUser,
-  deleteUser
+  deleteUser,
+  deleteUserDebug
 } = require('../controllers/userController');
 
 // routes mapping
@@ -16,6 +17,6 @@ router.post('/login', loginUser);
 router.get('/', getUsers);
 router.get('/:id', getUserById);
 router.put('/:id', updateUser);
-router.delete('/:id', deleteUser);
+router.delete('/:id', deleteUserDebug);
 
 module.exports = router;

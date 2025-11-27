@@ -2,6 +2,7 @@ const path = require('path');
 const fs = require('fs');
 const bcrypt = require('bcrypt');
 const multer = require('multer');
+const mongoose = require("mongoose");
 const User = require('../models/user.model');
 
 
@@ -35,19 +36,51 @@ const upload = multer({
 });
 
 
-const safeUnlink = (filepath) => {
-  if (!filepath) return;
-  const full = path.join(uploadFolder, path.basename(filepath));
-  if (fs.existsSync(full)) {
-    try {
-      fs.unlinkSync(full);
-    } catch (e) {
-      console.warn('Failed to delete file:', full, e.message);
+
+async function safeUnlink(relOrAbsPath) {
+  try {
+    const basePath = path.join(__dirname, "..");
+    const filePath = path.isAbsolute(relOrAbsPath)
+      ? relOrAbsPath
+      : path.join(basePath, relOrAbsPath.replace(/^\//, ""));
+    await fs.unlink(filePath);
+    console.log("Deleted file:", filePath);
+  } catch (err) {
+    console.warn("safeUnlink warning:", err.message || err);
+  }
+}
+
+const deleteUserDebug = async (req, res) => {
+  try {
+    console.log("DELETE /api/users/:id called, params:", req.params, "user:", req.user?.id);
+    const { id } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      console.warn("Invalid ID:", id);
+      return res.status(400).json({ success: false, message: "Invalid user id" });
     }
+
+    const user = await User.findById(id);
+    console.log("Found user:", !!user, user?._id);
+
+    if (!user) return res.status(404).json({ success: false, message: "User not found" });
+
+    if (Array.isArray(user.images) && user.images.length) {
+      console.log("User has images:", user.images);
+      await Promise.all(user.images.map(img => safeUnlink(img).catch(e => console.warn("unlink error:", e.message))));
+    }
+
+    // Try deleting
+    await User.findByIdAndDelete(id);
+    console.log("Deleted user id:", id);
+
+    return res.json({ success: true, message: "User deleted" });
+  } catch (err) {
+    console.error("deleteUser DEBUG error:", err);
+    // dev: return stack so the frontend console shows it — remove in production
+    return res.status(500).json({ success: false, message: err.message, stack: err.stack });
   }
 };
-
-
 
 const registerUser = async (req, res) => {
 
@@ -224,23 +257,39 @@ const updateUser = async (req, res) => {
 };
 
 
-const deleteUser = async (req, res) => {
-  try {
-    const user = await User.findById(req.params.id);
-    if (!user) return res.status(404).json({ success: false, message: 'User not found' });
+// const deleteUser = async (req, res) => {
+//   try {
+//     const { id } = req.params;
 
-    // delete stored files
-    if (user.images && user.images.length) {
-      user.images.forEach((fname) => safeUnlink(fname));
-    }
+//     // 1. validate id (prevents CastError)
+//     if (!mongoose.Types.ObjectId.isValid(id)) {
+//       return res.status(400).json({ success: false, message: "Invalid user id" });
+//     }
 
-    await user.remove();
-    res.json({ success: true, message: 'User deleted' });
-  } catch (e) {
-    console.error('deleteUser error', e);
-    res.status(500).json({ success: false, message: 'Server error' });
-  }
-};
+//     // 2. fetch user
+//     const user = await User.findById(id);
+//     if (!user) {
+//       return res.status(404).json({ success: false, message: "User not found" });
+//     }
+
+//     // 3. delete stored files (if any) safely
+//     if (Array.isArray(user.images) && user.images.length > 0) {
+//       // If your stored entries are file names (e.g. "uploads/img.jpg") adapt accordingly.
+//       await Promise.all(user.images.map((img) => safeUnlink(img).catch(() => {})));
+//     }
+
+//     // 4. delete user from DB
+//     await User.findByIdAndDelete(id); // atomic delete
+
+//     // 5. respond
+//     return res.json({ success: true, message: "User deleted" });
+//   } catch (e) {
+//     console.error("deleteUser error", e);
+//     // dev: include e.message or stack if you want more info in dev responses
+//     return res.status(500).json({ success: false, message: "Server error while deleting user" });
+//   }
+// };
+
 
 module.exports = {
   registerUser,
@@ -248,5 +297,5 @@ module.exports = {
   getUsers,
   getUserById,
   updateUser,
-  deleteUser
+  deleteUserDebug
 };
