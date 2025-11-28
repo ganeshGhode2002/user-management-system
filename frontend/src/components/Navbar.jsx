@@ -1,40 +1,67 @@
 // src/components/Navbar.jsx
 import React, { useContext } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { Button } from "@/components/ui/button";
 import { AuthContext } from "@/context/AuthContext";
+import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
 
 export default function Navbar() {
   const { user, logout } = useContext(AuthContext);
-  const nav = useNavigate();
+  const navigate = useNavigate();
+
+  const handleLogout = () => {
+    logout();
+    toast.success("Logged out");
+    navigate("/login", { replace: true });
+  };
 
   return (
-    <header className="bg-white border-b">
+    <header className="bg-white/80 backdrop-blur border-b sticky top-0 z-50">
       <div className="container mx-auto px-4 py-3 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="h-10 w-10 rounded-lg bg-linear-to-tr from-indigo-600 to-indigo-400 flex items-center justify-center text-white font-bold">
+
+        {/* Logo */}
+        <Link to="/" className="flex items-center gap-3">
+          <div className="h-10 w-10 rounded-xl bg-indigo-600 flex items-center justify-center text-white font-bold shadow-md">
             UM
           </div>
           <div>
-            <Link to="/" className="text-lg font-semibold text-slate-800">User Management</Link>
-            <div className="text-xs text-slate-500">Manage Users</div>
+            <h1 className="text-lg font-semibold text-slate-800">User Management</h1>
+            <p className="text-xs text-slate-500">Admin Dashboard</p>
           </div>
-        </div>
+        </Link>
 
-        <nav className="flex items-center gap-3">
-          <Link to="/" className="text-sm text-slate-600 hover:text-slate-800">Users</Link>
-          <Link to="/register" className="text-sm text-slate-600 hover:text-slate-800">Register</Link>
-
-          {user ? (
-            <Button size="sm" onClick={() => { logout(); nav("/login"); }}>
-              Logout
-            </Button>
-          ) : (
-            <Button variant="default" size="sm" onClick={() => nav("/login")}>
+        {/* Actions */}
+        {!user ? (
+          <div className="flex items-center gap-3">
+            <Link
+              to="/register"
+              className="text-sm text-slate-600 hover:text-slate-800"
+            >
+              Register
+            </Link>
+            <Button size="sm" onClick={() => navigate("/login")}>
               Login
             </Button>
-          )}
-        </nav>
+          </div>
+        ) : (
+          <div className="flex items-center gap-3">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => navigate(`/profile/${user._id}`)}
+            >
+              Profile
+            </Button>
+
+            <Button
+                 
+              size="sm"
+              onClick={handleLogout}
+            >
+              Logout
+            </Button>
+          </div>
+        )}
       </div>
     </header>
   );

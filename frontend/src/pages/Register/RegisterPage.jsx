@@ -1,10 +1,48 @@
+// src/pages/RegisterPage.jsx
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import API from "@/api/axios";
 import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
 
 const CITIES = ["Mumbai", "Pune", "Satara", "Nashik"];
 const EDUCATION = ["SSC", "HSC", "BSC", "BCOM", "MCA", "Phd"];
+
+function ImageSlot({ idx, preview, onFileChange, onRemove }) {
+  return (
+    <div className="flex flex-col items-center gap-2">
+      <div className="w-28 h-28 md:w-32 md:h-32 rounded-xl border border-slate-200 bg-slate-50 overflow-hidden flex items-center justify-center shadow-sm">
+        {preview ? (
+          <img src={preview} alt={`preview-${idx}`} className="w-full h-full object-cover" />
+        ) : (
+          <div className="text-xs text-slate-400">No image</div>
+        )}
+      </div>
+
+      <div className="flex items-center gap-3">
+        <label className="cursor-pointer text-xs px-3 py-1 rounded-md border bg-white hover:bg-slate-50">
+          <input
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={(e) => onFileChange(e.target.files?.[0] ?? null)}
+          />
+          Upload
+        </label>
+
+        {preview && (
+          <button
+            type="button"
+            onClick={onRemove}
+            className="text-xs text-red-600 hover:underline"
+          >
+            Remove
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
 
 export default function RegisterPage() {
   const navigate = useNavigate();
@@ -18,204 +56,196 @@ export default function RegisterPage() {
     education: [],
   });
 
-  // images state: store File or null + preview data URL
-  const [images, setImages] = useState([null, null, null, null]); // files
-  const [previews, setPreviews] = useState([null, null, null, null]); // dataURL
+  const [images, setImages] = useState([null, null, null, null]);
+  const [previews, setPreviews] = useState([null, null, null, null]);
   const [loading, setLoading] = useState(false);
 
-  function handleChange(e) {
+  function change(e) {
     const { name, value, type, checked } = e.target;
+
     if (name === "education") {
-      // checkbox handling
       setForm((s) => {
-        const arr = new Set(s.education);
-        if (checked) arr.add(value);
-        else arr.delete(value);
-        return { ...s, education: Array.from(arr) };
+        const setEdu = new Set(s.education);
+        if (checked) setEdu.add(value);
+        else setEdu.delete(value);
+        return { ...s, education: [...setEdu] };
       });
-    } else if (type === "radio") {
-      setForm((s) => ({ ...s, [name]: value }));
-    } else {
-      setForm((s) => ({ ...s, [name]: value }));
+      return;
     }
+
+    setForm((s) => ({ ...s, [name]: type === "checkbox" ? checked : value }));
   }
 
-  function handleImageChange(index, file) {
+  function changeImage(index, file) {
     const newImgs = [...images];
     newImgs[index] = file || null;
     setImages(newImgs);
 
     if (!file) {
-      const newPre = [...previews];
-      newPre[index] = null;
-      setPreviews(newPre);
+      const p = [...previews];
+      p[index] = null;
+      setPreviews(p);
       return;
     }
 
     const reader = new FileReader();
     reader.onload = (ev) => {
-      const newPre = [...previews];
-      newPre[index] = ev.target.result;
-      setPreviews(newPre);
+      const p = [...previews];
+      p[index] = ev.target.result;
+      setPreviews(p);
     };
     reader.readAsDataURL(file);
   }
 
   function validate() {
-    if (!form.email.trim()) return "Email is required";
-    if (!/^\S+@\S+\.\S+$/.test(form.email)) return "Enter a valid email";
-    if (!form.password) return "Password is required";
-    if (form.password.length < 6) return "Password must be at least 6 characters";
-    if (form.password !== form.confirmPassword) return "Passwords do not match";
+    if (!form.email.trim()) return "Email required";
+    if (!/^\S+@\S+\.\S+$/.test(form.email)) return "Invalid email";
+    if (!form.password.trim()) return "Password required";
+    if (form.password.length < 6) return "Password must be at least 6 chars";
+    if (form.password !== form.confirmPassword)
+      return "Passwords do not match";
     return null;
   }
 
-  async function handleSubmit(e) {
+  async function submit(e) {
     e.preventDefault();
+
     const err = validate();
     if (err) return toast.error(err);
 
     setLoading(true);
     try {
       const formData = new FormData();
-      formData.append("email", form.email.trim().toLowerCase());
+      formData.append("email", form.email.trim());
       formData.append("password", form.password);
       formData.append("confirmPassword", form.confirmPassword);
       formData.append("gender", form.gender);
       formData.append("city", form.city);
 
-      // education as multiple checkboxes -> send as repeated fields
-      if (Array.isArray(form.education) && form.education.length) {
-        form.education.forEach((edu) => formData.append("education", edu));
-      }
+      form.education.forEach((ed) => formData.append("education", ed));
+      images.forEach((file, idx) => file && formData.append(`image${idx + 1}`, file));
 
-      // images: image1..image4
-      images.forEach((f, idx) => {
-        if (f) formData.append(`image${idx + 1}`, f);
-      });
-
-      // POST to backend. Your backend register controller expects file fields and text fields.
       const res = await API.post("/users/register", formData, {
         headers: { "Content-Type": "multipart/form-data" },
       });
 
-      // handle response shapes: { success: true, user } or user object
-      const ok = res.data?.success ?? true;
-      if (ok) {
-        toast.success("Registered successfully — please login");
-        // optional: clear form
-        setForm({
-          email: "",
-          password: "",
-          confirmPassword: "",
-          gender: "male",
-          city: CITIES[0],
-          education: [],
-        });
-        setImages([null, null, null, null]);
-        setPreviews([null, null, null, null]);
-        // redirect to login
+      if (res.data?.success) {
+        toast.success("Registered successfully!");
         navigate("/login");
-        return;
       } else {
-        toast.error(res.data?.message || "Registration failed");
+        toast.error(res.data?.message || "Register failed");
       }
-    } catch (error) {
-      console.error("register error", error);
-      const msg = error?.response?.data?.message || "Server error — registration failed";
-      toast.error(msg);
+    } catch (err) {
+      toast.error(err?.response?.data?.message || "Server error");
     } finally {
       setLoading(false);
     }
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-b from-slate-50 to-white p-6">
-      <div className="w-full max-w-3xl bg-white rounded-2xl shadow-lg border p-6">
-        <h2 className="text-2xl font-semibold text-slate-900 mb-1">Register</h2>
-        <p className="text-sm text-slate-500 mb-6">Fill the form and upload up to 4 images. After register you'll be redirected to login.</p>
+    <div className="min-h-screen flex justify-center bg-gradient-to-b from-slate-100 to-white p-6">
+      <div className="w-full max-w-4xl bg-white rounded-2xl shadow-xl border border-slate-200 p-8">
 
-        <form onSubmit={handleSubmit} className="space-y-5" noValidate>
+        {/* Header */}
+        <div className="mb-6">
+          <h2 className="text-3xl font-semibold text-slate-900">Create Account</h2>
+          <p className="text-sm text-slate-500 mt-1">
+            Fill in your details and upload up to 4 images.
+          </p>
+        </div>
+
+        <form onSubmit={submit} className="space-y-8">
+
+          {/* Row 1 */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <label className="block">
-              <span className="text-sm font-medium text-slate-700">Email</span>
+            <div>
+              <label className="text-sm font-medium text-slate-700">Email</label>
               <input
                 name="email"
                 type="email"
                 value={form.email}
-                onChange={handleChange}
-                required
-                className="mt-1 block w-full rounded-lg border border-slate-200 px-3 py-2 focus:ring-2 focus:ring-indigo-200"
+                onChange={change}
+                className="mt-2 block w-full rounded-lg border border-slate-300 px-3 py-2"
                 placeholder="you@example.com"
               />
-            </label>
+            </div>
 
-            <label className="block">
-              <span className="text-sm font-medium text-slate-700">City</span>
+            <div>
+              <label className="text-sm font-medium text-slate-700">City</label>
               <select
                 name="city"
                 value={form.city}
-                onChange={handleChange}
-                className="mt-1 block w-full rounded-lg border border-slate-200 px-3 py-2 bg-white"
+                onChange={change}
+                className="mt-2 block w-full rounded-lg border border-slate-300 px-3 py-2"
               >
-                {CITIES.map((c) => <option key={c} value={c}>{c}</option>)}
+                {CITIES.map((c) => (
+                  <option key={c} value={c}>
+                    {c}
+                  </option>
+                ))}
               </select>
-            </label>
+            </div>
           </div>
 
+          {/* Row 2 */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <label className="block">
-              <span className="text-sm font-medium text-slate-700">Password</span>
+            <div>
+              <label className="text-sm font-medium text-slate-700">Password</label>
               <input
                 name="password"
                 type="password"
                 value={form.password}
-                onChange={handleChange}
-                required
-                className="mt-1 block w-full rounded-lg border border-slate-200 px-3 py-2 focus:ring-2 focus:ring-indigo-200"
+                onChange={change}
+                className="mt-2 block w-full rounded-lg border border-slate-300 px-3 py-2"
                 placeholder="Enter password"
               />
-            </label>
+            </div>
 
-            <label className="block">
-              <span className="text-sm font-medium text-slate-700">Confirm password</span>
+            <div>
+              <label className="text-sm font-medium text-slate-700">Confirm Password</label>
               <input
                 name="confirmPassword"
                 type="password"
                 value={form.confirmPassword}
-                onChange={handleChange}
-                required
-                className="mt-1 block w-full rounded-lg border border-slate-200 px-3 py-2 focus:ring-2 focus:ring-indigo-200"
+                onChange={change}
+                className="mt-2 block w-full rounded-lg border border-slate-300 px-3 py-2"
                 placeholder="Repeat password"
               />
-            </label>
+            </div>
           </div>
 
-          <div className="flex gap-6 items-center">
+          {/* Gender + Education */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
             <div>
               <div className="text-sm font-medium text-slate-700">Gender</div>
-              <div className="flex gap-4 mt-2">
-                <label className="inline-flex items-center gap-2 text-sm">
-                  <input type="radio" name="gender" value="male" checked={form.gender === "male"} onChange={handleChange} />
-                  Male
-                </label>
-                <label className="inline-flex items-center gap-2 text-sm">
-                  <input type="radio" name="gender" value="female" checked={form.gender === "female"} onChange={handleChange} />
-                  Female
-                </label>
-                <label className="inline-flex items-center gap-2 text-sm">
-                  <input type="radio" name="gender" value="others" checked={form.gender === "others"} onChange={handleChange} />
-                  Others
-                </label>
+              <div className="mt-3 flex gap-6">
+                {["male", "female", "others"].map((g) => (
+                  <label key={g} className="flex items-center gap-2 text-sm">
+                    <input
+                      type="radio"
+                      name="gender"
+                      value={g}
+                      checked={form.gender === g}
+                      onChange={change}
+                    />
+                    {g.toUpperCase()}
+                  </label>
+                ))}
               </div>
             </div>
 
             <div>
               <div className="text-sm font-medium text-slate-700">Education</div>
-              <div className="flex flex-wrap gap-3 mt-2">
+              <div className="mt-3 flex flex-wrap gap-4">
                 {EDUCATION.map((ed) => (
-                  <label key={ed} className="inline-flex items-center gap-2 text-sm">
-                    <input type="checkbox" name="education" value={ed} checked={form.education.includes(ed)} onChange={handleChange} />
+                  <label key={ed} className="flex items-center gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      name="education"
+                      value={ed}
+                      checked={form.education.includes(ed)}
+                      onChange={change}
+                    />
                     {ed}
                   </label>
                 ))}
@@ -225,53 +255,44 @@ export default function RegisterPage() {
 
           {/* Image uploads */}
           <div>
-            <div className="text-sm font-medium text-slate-700 mb-2">Upload up to 4 images (one per slot)</div>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-              {[0,1,2,3].map((i) => (
-                <div key={i} className="border rounded-lg p-3 flex flex-col items-center gap-2">
-                  {previews[i] ? (
-                    <img src={previews[i]} alt={`preview-${i}`} className="w-24 h-24 object-cover rounded" />
-                  ) : (
-                    <div className="w-24 h-24 bg-slate-100 rounded flex items-center justify-center text-slate-400">No image</div>
-                  )}
+            <div className="text-sm font-medium text-slate-700 mb-3">
+              Upload up to 4 images
+            </div>
 
-                  <input
-                    type="file"
-                    accept="image/*"
-                    onChange={(e) => handleImageChange(i, e.target.files?.[0] || null)}
-                    className="text-xs"
-                  />
-                  {previews[i] && (
-                    <button
-                      type="button"
-                      onClick={() => handleImageChange(i, null)}
-                      className="text-xs text-red-600 hover:underline"
-                    >
-                      Remove
-                    </button>
-                  )}
-                </div>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+              {[0, 1, 2, 3].map((i) => (
+                <ImageSlot
+                  key={i}
+                  idx={i}
+                  preview={previews[i]}
+                  onFileChange={(file) => changeImage(i, file)}
+                  onRemove={() => changeImage(i, null)}
+                />
               ))}
             </div>
           </div>
 
-          <div className="pt-3">
-            <button
-              type="submit"
-              disabled={loading}
-              className={`w-full rounded-lg px-4 py-2 font-medium transition ${
-                loading ? "bg-slate-300 cursor-not-allowed" : "bg-indigo-600 hover:bg-indigo-700 text-white"
-              }`}
-            >
-              {loading ? "Registering..." : "Create account"}
-            </button>
-          </div>
-        </form>
+          {/* Submit */}
+          <Button
+            type="submit"
+            disabled={loading}
+            className="w-full py-3 mt-4"
+          >
+            {loading ? "Creating account..." : "Create account"}
+          </Button>
 
-        <div className="mt-4 text-sm text-slate-500">
-          Already registered?{" "}
-          <button onClick={() => navigate("/login")} className="text-indigo-600 hover:underline">Login</button>
-        </div>
+          <p className="text-sm text-slate-600">
+            Already have an account?{" "}
+            <button
+              type="button"
+              onClick={() => navigate("/login")}
+              className="text-indigo-600 hover:underline"
+            >
+              Login
+            </button>
+          </p>
+
+        </form>
       </div>
     </div>
   );
