@@ -1,15 +1,24 @@
-import React, { useState } from "react";
+// src/pages/LoginPage.jsx
+import React, { useState, useContext } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
-import API from "@/api/axios"; // make sure this points to baseURL: `${VITE_API_URL}/api`
+import API from "@/api/axios";
+import { AuthContext } from "@/context/AuthContext";
+import { Button } from "@/components/ui/button";
 
 export default function LoginPage() {
   const navigate = useNavigate();
-  const [form, setForm] = useState({ email: "", password: "", remember: false });
+  const auth = useContext(AuthContext);
+
+  const [form, setForm] = useState({
+    email: "",
+    password: "",
+    remember: false,
+  });
   const [loading, setLoading] = useState(false);
   const [showPw, setShowPw] = useState(false);
 
-  function handleChange(e) {
+  function change(e) {
     const { name, value, type, checked } = e.target;
     setForm((s) => ({ ...s, [name]: type === "checkbox" ? checked : value }));
   }
@@ -17,57 +26,39 @@ export default function LoginPage() {
   function validate() {
     if (!form.email.trim()) return "Email is required";
     if (!/^\S+@\S+\.\S+$/.test(form.email)) return "Enter a valid email";
-    if (!form.password) return "Password is required";
+    if (!form.password.trim()) return "Password is required";
     return null;
   }
 
-  async function handleSubmit(e) {
+  async function submit(e) {
     e.preventDefault();
     const err = validate();
     if (err) return toast.error(err);
 
     setLoading(true);
     try {
-      // adjust endpoint if your backend uses a different route (e.g. /auth/login)
       const res = await API.post("/users/login", {
         email: form.email.trim().toLowerCase(),
         password: form.password,
       });
 
-      // expected shapes:
-      // 1) { token: "...", user: {...} }
-      // 2) { success: true, data: { token, user } }
-      const payload = res.data?.data ?? res.data;
-      const token = payload?.token ?? res.data?.token;
-      const user = payload?.user ?? res.data?.user ?? payload;
+      const token = res.data?.token || res.data?.data?.token;
+      const user = res.data?.user || res.data?.data?.user;
 
-      if (!token && !user) {
-        // maybe the API returns { success: true } or message-only
+      if (!token || !user) {
         toast.error(res.data?.message || "Login failed");
         return;
       }
 
-      // Save token (or user) depending on your backend
-      if (token) {
-        // remember: if user unchecks remember => sessionStorage (clears on tab close)
-        const storage = form.remember ? localStorage : sessionStorage;
-        storage.setItem("authToken", token);
-      }
+      auth.login({ token, user, remember: form.remember });
 
-      // optionally store user info
-      if (user) {
-        localStorage.setItem("user", JSON.stringify(user));
-      }
-
-      toast.success("Logged in successfully");
-      // navigate to dashboard/home
-      navigate("/dashboard");
-    } catch (error) {
-      console.error("login error", error);
+      toast.success("Welcome back!");
+      navigate("/dashboard", { replace: true });
+    } catch (err) {
       const msg =
-        error?.response?.data?.message ||
-        error?.response?.data?.error ||
-        "Server error — login failed";
+        err?.response?.data?.message ||
+        err?.response?.data?.error ||
+        "Server error";
       toast.error(msg);
     } finally {
       setLoading(false);
@@ -75,102 +66,103 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-b from-slate-50 to-white p-6">
-      <div className="w-full max-w-md bg-white rounded-2xl shadow-lg border p-6">
-        <h2 className="text-2xl font-semibold text-slate-900 mb-1">Welcome back</h2>
-        <p className="text-sm text-slate-500 mb-6">Login to manage your account and access the dashboard.</p>
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-b from-slate-100 to-white px-4 py-12">
+      <div className="w-full max-w-md bg-white shadow-xl border border-slate-200 rounded-2xl p-8">
 
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <label className="block">
-            <span className="text-sm font-medium text-slate-700">Email</span>
+        {/* Header */}
+        <div className="flex items-center gap-3 mb-6">
+          <div className="w-12 h-12 rounded-xl bg-indigo-600 text-white font-bold flex items-center justify-center">
+            UM
+          </div>
+          <div>
+            <h1 className="text-2xl font-bold text-slate-900">Welcome back</h1>
+            <p className="text-sm text-slate-600 mt-1">
+              Login to access your dashboard.
+            </p>
+          </div>
+        </div>
+
+        {/* Form */}
+        <form onSubmit={submit} className="space-y-5" noValidate>
+          {/* Email */}
+          <div>
+            <label className="block text-sm font-medium text-slate-700">
+              Email
+            </label>
             <input
               name="email"
               value={form.email}
-              onChange={handleChange}
+              onChange={change}
               type="email"
-              autoComplete="email"
-              className="mt-1 block w-full rounded-lg border border-slate-200 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-200"
+              className="mt-2 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-200 focus:outline-none"
               placeholder="you@example.com"
             />
-          </label>
+          </div>
 
-          <label className="block">
+          {/* Password */}
+          <div>
             <div className="flex items-center justify-between">
-              <span className="text-sm font-medium text-slate-700">Password</span>
-              <span className="text-xs text-slate-400">{/* optional forgot link */}</span>
+              <label className="block text-sm font-medium text-slate-700">
+                Password
+              </label>
+              <button
+                type="button"
+                className="text-xs text-indigo-600 hover:underline"
+              >
+                Forgot?
+              </button>
             </div>
 
-            <div className="mt-1 relative">
+            <div className="mt-2 relative">
               <input
                 name="password"
                 value={form.password}
-                onChange={handleChange}
+                onChange={change}
                 type={showPw ? "text" : "password"}
-                autoComplete="current-password"
-                className="block w-full rounded-lg border border-slate-200 px-3 py-2 pr-12 focus:outline-none focus:ring-2 focus:ring-indigo-200"
-                placeholder="Enter your password"
+                className="w-full rounded-lg border border-slate-300 px-3 py-2 pr-16 text-sm focus:ring-2 focus:ring-indigo-200 focus:outline-none"
+                placeholder="Enter password"
               />
+
               <button
                 type="button"
-                aria-label={showPw ? "Hide password" : "Show password"}
                 onClick={() => setShowPw((s) => !s)}
-                className="absolute right-2 top-2.5 text-sm text-slate-500 px-2 py-1 rounded"
+                className="absolute right-2 top-2.5 text-xs text-slate-500 px-2 py-1 hover:bg-slate-100 rounded"
               >
                 {showPw ? "Hide" : "Show"}
               </button>
             </div>
-          </label>
-
-          <div className="flex items-center justify-between">
-            <label className="inline-flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                name="remember"
-                checked={form.remember}
-                onChange={handleChange}
-                className="w-4 h-4 rounded border-slate-300"
-              />
-              <span className="text-slate-600">Remember me</span>
-            </label>
-
-            <button
-              type="button"
-              onClick={() => navigate("/forgot-password")}
-              className="text-sm text-indigo-600 hover:underline"
-            >
-              Forgot?
-            </button>
           </div>
 
-          <button
-            type="submit"
-            disabled={loading}
-            className={`w-full inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 font-medium transition ${
-              loading ? "bg-slate-300 cursor-not-allowed" : "bg-indigo-600 hover:bg-indigo-700 text-white"
-            }`}
-          >
-            {loading ? (
-              <>
-                <svg className="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none">
-                  <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" className="opacity-25" />
-                  <path fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
-                </svg>
-                Logging in...
-              </>
-            ) : (
-              "Sign in"
-            )}
-          </button>
-        </form>
+          {/* Remember me */}
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              name="remember"
+              checked={form.remember}
+              onChange={change}
+              className="h-4 w-4"
+            />
+            Remember me
+          </label>
 
-        <div className="mt-6 text-center text-sm text-slate-500">
-          Don’t have an account?{" "}
-          <button onClick={() => navigate("/register")} className="text-indigo-600 hover:underline">
-            Register
-          </button>
-        </div>
+          {/* Submit */}
+          <Button className="w-full py-3 bg-blue-600 text-white hover:bg-blue-700 cursor-pointer" disabled={loading}>
+            {loading ? "Signing in..." : "Sign in"}
+          </Button>
+
+          {/* Register link */}
+          <p className="text-sm mt-4 text-center text-slate-600">
+            New here?{" "}
+            <button
+              type="button"
+              onClick={() => navigate("/register")}
+              className="text-indigo-600 hover:underline"
+            >
+              Create an account
+            </button>
+          </p>
+        </form>
       </div>
     </div>
   );
 }
-
