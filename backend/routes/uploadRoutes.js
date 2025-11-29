@@ -18,7 +18,7 @@ const s3 = new S3Client({
   }
 });
 
-router.post('/uploads', upload.single('image'), async (req, res) => {
+router.post('/upload', upload.single('image'), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
 
