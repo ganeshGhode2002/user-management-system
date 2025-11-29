@@ -1,335 +1,258 @@
+// controllers/userController.js
 const path = require('path');
 const fs = require('fs');
 const bcrypt = require('bcrypt');
-const multer = require('multer');
-const mongoose = require("mongoose");
+const mongoose = require('mongoose');
 const User = require('../models/user.model');
-const jwt = require("jsonwebtoken");
+const jwt = require('jsonwebtoken');
 
-const uploadFolder = path.join(__dirname, '..', 'uploads');
-if (!fs.existsSync(uploadFolder)) {
-  fs.mkdirSync(uploadFolder);
-}
+const { S3Client, GetObjectCommand, DeleteObjectCommand } = require('@aws-sdk/client-s3');
+const { getSignedUrl } = require('@aws-sdk/s3-request-presigner');
 
-
-const storage = multer.diskStorage({
-  destination: function (req, file, cb) {
-    cb(null, uploadFolder);
-  },
-  filename: function (req, file, cb) {
-    const unique = Date.now() + '-' + Math.round(Math.random() * 1e9);
-    const ext = path.extname(file.originalname);
-    cb(null, unique + ext);
+// create S3 client (env must contain AWS_REGION, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY)
+const s3 = new S3Client({
+  region: process.env.AWS_REGION,
+  credentials: {
+    accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY
   }
 });
 
+async function presignKey(key, expires = 3600) {
+  const cmd = new GetObjectCommand({ Bucket: process.env.S3_BUCKET, Key: key });
+  return getSignedUrl(s3, cmd, { expiresIn: expires });
+}
 
-const fileFilter = (req, file, cb) => {
-  if (file.mimetype.startsWith('image/')) cb(null, true);
-  else cb(new Error('Only image files are allowed!'), false);
-};
+async function deleteS3Key(key) {
+  try {
+    const cmd = new DeleteObjectCommand({ Bucket: process.env.S3_BUCKET, Key: key });
+    await s3.send(cmd);
+    return true;
+  } catch (err) {
+    console.warn('deleteS3Key warning:', err?.message || err);
+    return false;
+  }
+}
 
-const upload = multer({
-  storage,
-  fileFilter,
-  limits: { fileSize: 2 * 1024 * 1024 } // 2 MB per file
-});
-
-
-
+/**
+ * Helper: attempt to unlink local file OR ignore if it's an S3 key.
+ * If the stored path looks like an S3 key (starts with uploads/), we do not unlink local FS.
+ */
 async function safeUnlink(relOrAbsPath) {
   try {
+    // if looks like s3 key (uploads/...) don't try to unlink local file
+    if (typeof relOrAbsPath === 'string' && !relOrAbsPath.includes(path.sep) && relOrAbsPath.startsWith('uploads/')) {
+      // we expect this is an S3 key => delete from S3 instead
+      await deleteS3Key(relOrAbsPath);
+      return;
+    }
+
     const basePath = path.join(__dirname, "..");
     const filePath = path.isAbsolute(relOrAbsPath)
       ? relOrAbsPath
       : path.join(basePath, relOrAbsPath.replace(/^\//, ""));
-    await fs.unlink(filePath);
-    console.log("Deleted file:", filePath);
+
+    if (fs.existsSync(filePath)) {
+      await fs.promises.unlink(filePath);
+      console.log("Deleted file:", filePath);
+    }
   } catch (err) {
     console.warn("safeUnlink warning:", err.message || err);
   }
 }
 
-const deleteUserDebug = async (req, res) => {
-  try {
-    console.log("DELETE /api/users/:id called, params:", req.params, "user:", req.user?.id);
-    const { id } = req.params;
-
-    if (!mongoose.Types.ObjectId.isValid(id)) {
-      console.warn("Invalid ID:", id);
-      return res.status(400).json({ success: false, message: "Invalid user id" });
-    }
-
-    const user = await User.findById(id);
-    console.log("Found user:", !!user, user?._id);
-
-    if (!user) return res.status(404).json({ success: false, message: "User not found" });
-
-    if (Array.isArray(user.images) && user.images.length) {
-      console.log("User has images:", user.images);
-      await Promise.all(user.images.map(img => safeUnlink(img).catch(e => console.warn("unlink error:", e.message))));
-    }
-
-    // Try deleting
-    await User.findByIdAndDelete(id);
-    console.log("Deleted user id:", id);
-
-    return res.json({ success: true, message: "User deleted" });
-  } catch (err) {
-    console.error("deleteUser DEBUG error:", err);
-    // dev: return stack so the frontend console shows it — remove in production
-    return res.status(500).json({ success: false, message: err.message, stack: err.stack });
-  }
-};
-
+// ===== registerUser =====
+// Accepts JSON body (no file uploads here). Expected fields:
+// { email, password, confirmPassword, gender, city, education, photoKeys }
+// photoKeys: optional array of s3 keys like ["uploads/123.jpg", ...]
 const registerUser = async (req, res) => {
-
-  const uploader = upload.fields([
-    { name: 'image1', maxCount: 1 },
-    { name: 'image2', maxCount: 1 },
-    { name: 'image3', maxCount: 1 },
-    { name: 'image4', maxCount: 1 }
-  ]);
-
-  uploader(req, res, async function (err) {
-    try {
-      if (err) {
-        return res.status(400).json({ success: false, message: err.message });
-      }
-
-      const { email, password, confirmPassword, gender, city } = req.body;
-      let education = req.body.education || [];
-      if (typeof education === 'string') {
-        education = [education];
-      }
-
-      if (!email || !password || !confirmPassword) {
-        return res.status(400).json({ success: false, message: 'Email and password required' });
-      }
-      if (password !== confirmPassword) {
-        return res.status(400).json({ success: false, message: 'Passwords do not match' });
-      }
-
-
-      const existing = await User.findOne({ email: email.toLowerCase().trim() });
-      if (existing) {
-        return res.status(400).json({ success: false, message: 'Email already registered' });
-      }
-
-      // hash password
-      const saltRounds = 10;
-      const hashed = await bcrypt.hash(password, saltRounds);
-
-      // collect images
-      const images = [];
-      ['image1', 'image2', 'image3', 'image4'].forEach((field) => {
-        if (req.files && req.files[field] && req.files[field][0]) {
-          // store relative path so frontend can request /uploads/<filename>
-          images.push(req.files[field][0].filename);
-        }
-      });
-
-      const user = new User({
-        email: email.toLowerCase().trim(),
-        password: hashed,
-        gender: gender || '',
-        city: city || '',
-        education,
-        images
-      });
-
-      await user.save();
-
-      // return user without password
-      const userObj = user.toObject();
-      delete userObj.password;
-
-      res.status(201).json({ success: true, user: userObj });
-    } catch (e) {
-      console.error('registerUser error', e);
-      res.status(500).json({ success: false, message: 'Server error' });
-    }
-  });
-};
-
-
-// const loginUser = async (req, res) => {
-//   try {
-//     const { email, password } = req.body;
-//     if (!email || !password) return res.status(400).json({ success: false, message: 'Email & password required' });
-
-//     const user = await User.findOne({ email: email.toLowerCase().trim() });
-//     if (!user) return res.status(400).json({ success: false, message: 'Invalid credentials' });
-
-//     const match = await bcrypt.compare(password, user.password);
-//     if (!match) return res.status(400).json({ success: false, message: 'Invalid credentials' });
-
-//     const userObj = user.toObject();
-//     delete userObj.password;
-
-//     res.json({ success: true, user: userObj });
-//   } catch (e) {
-//     console.error('loginUser error', e);
-//     res.status(500).json({ success: false, message: 'Server error' });
-//   }
-// };
-
-const loginUser = async (req, res) => {
   try {
-    const { email, password } = req.body;
-    if (!email || !password)
-      return res
-        .status(400)
-        .json({ success: false, message: "Email & password required" });
+    const { email, password, confirmPassword, gender = '', city = '', education = [], photoKeys = [] } = req.body;
 
-    const user = await User.findOne({ email: email.toLowerCase().trim() });
-    if (!user)
-      return res
-        .status(400)
-        .json({ success: false, message: "Invalid credentials" });
+    if (!email || !password || !confirmPassword) {
+      return res.status(400).json({ success: false, message: 'Email and password required' });
+    }
+    if (password !== confirmPassword) {
+      return res.status(400).json({ success: false, message: 'Passwords do not match' });
+    }
 
-    const match = await bcrypt.compare(password, user.password);
-    if (!match)
-      return res
-        .status(400)
-        .json({ success: false, message: "Invalid credentials" });
+    const existing = await User.findOne({ email: email.toLowerCase().trim() });
+    if (existing) {
+      return res.status(400).json({ success: false, message: 'Email already registered' });
+    }
 
-    // Generate JWT
-    const token = jwt.sign(
-      { id: user._id },
-      process.env.JWT_SECRET || "defaultsecret",
-      { expiresIn: "7d" }
-    );
+    const hashed = await bcrypt.hash(password, 10);
+
+    const user = new User({
+      email: email.toLowerCase().trim(),
+      password: hashed,
+      gender,
+      city,
+      education: Array.isArray(education) ? education : [education],
+      images: Array.isArray(photoKeys) ? photoKeys : []
+    });
+
+    await user.save();
 
     const userObj = user.toObject();
     delete userObj.password;
 
-    res.json({
-      success: true,
-      token,
-      user: userObj,
-    });
-  } catch (e) {
-    console.error("loginUser error", e);
-    res.status(500).json({ success: false, message: "Server error" });
+    return res.status(201).json({ success: true, user: userObj });
+  } catch (err) {
+    console.error('registerUser error', err);
+    return res.status(500).json({ success: false, message: 'Server error' });
   }
 };
 
+// ===== loginUser =====
+const loginUser = async (req, res) => {
+  try {
+    const { email, password } = req.body;
+    if (!email || !password)
+      return res.status(400).json({ success: false, message: "Email & password required" });
+
+    const user = await User.findOne({ email: email.toLowerCase().trim() });
+    if (!user) return res.status(400).json({ success: false, message: "Invalid credentials" });
+
+    const match = await bcrypt.compare(password, user.password);
+    if (!match) return res.status(400).json({ success: false, message: "Invalid credentials" });
+
+    const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET || "defaultsecret", { expiresIn: "7d" });
+
+    const userObj = user.toObject();
+    delete userObj.password;
+
+    res.json({ success: true, token, user: userObj });
+  } catch (err) {
+    console.error('loginUser error', err);
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
+};
+
+// ===== getUsers =====
 const getUsers = async (req, res) => {
   try {
     const users = await User.find().sort({ createdAt: -1 }).select('-password');
-    res.json(users);
-  } catch (e) {
-    console.error('getUsers error', e);
+    res.json({ success: true, users });
+  } catch (err) {
+    console.error('getUsers error', err);
     res.status(500).json({ success: false, message: 'Server error' });
   }
 };
 
-
+// ===== getUserById =====
+// returns user + presigned image URLs in `photos`
 const getUserById = async (req, res) => {
   try {
-    const user = await User.findById(req.params.id).select('-password');
+    const id = req.params.id;
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ success: false, message: 'Invalid user id' });
+    }
+
+    const user = await User.findById(id).select('-password').lean();
     if (!user) return res.status(404).json({ success: false, message: 'User not found' });
-    res.json({ success: true, user });
-  } catch (e) {
-    console.error('getUserById error', e);
+
+    // generate presigned urls for images stored as keys
+    const photos = Array.isArray(user.images) && user.images.length
+      ? await Promise.all(user.images.map(k => presignKey(k).catch(e => {
+        console.warn('presignKey failed for', k, e?.message || e);
+        return null;
+      })))
+      : [];
+
+    const safeUser = {
+      _id: user._id,
+      email: user.email,
+      gender: user.gender,
+      city: user.city,
+      education: user.education,
+      createdAt: user.createdAt,
+      photos: photos.filter(Boolean)
+    };
+
+    res.json({ success: true, user: safeUser });
+  } catch (err) {
+    console.error('getUserById error', err);
     res.status(500).json({ success: false, message: 'Server error' });
   }
 };
 
-
+// ===== updateUser =====
+// Accept JSON body with fields to update. For images, accept photoKeys array to replace OR append.
 const updateUser = async (req, res) => {
-  const uploader = upload.fields([
-    { name: 'image1', maxCount: 1 },
-    { name: 'image2', maxCount: 1 },
-    { name: 'image3', maxCount: 1 },
-    { name: 'image4', maxCount: 1 }
-  ]);
+  try {
+    const id = req.params.id;
+    if (!mongoose.Types.ObjectId.isValid(id)) return res.status(400).json({ success: false, message: 'Invalid user id' });
 
-  uploader(req, res, async function (err) {
-    try {
-      if (err) return res.status(400).json({ success: false, message: err.message });
+    const user = await User.findById(id);
+    if (!user) return res.status(404).json({ success: false, message: 'User not found' });
 
-      const user = await User.findById(req.params.id);
-      if (!user) return res.status(404).json({ success: false, message: 'User not found' });
+    const { email, password, gender, city, education, photoKeys, replaceImages } = req.body;
 
-      // update fields if provided
-      const { email, password, gender, city } = req.body;
-      let education = req.body.education || [];
-      if (typeof education === 'string') education = [education];
+    if (email) user.email = email.toLowerCase().trim();
+    if (gender) user.gender = gender;
+    if (city) user.city = city;
+    if (education) user.education = Array.isArray(education) ? education : [education];
 
-      if (email) user.email = email.toLowerCase().trim();
-      if (gender) user.gender = gender;
-      if (city) user.city = city;
-      if (education && Array.isArray(education)) user.education = education;
-
-      // if password update requested
-      if (password) {
-        const hashed = await bcrypt.hash(password, 10);
-        user.password = hashed;
-      }
-
-      // handle new uploaded images (replace by position if provided)
-      // We'll keep the logic: push new images to array (or you can implement replace)
-      // If you want replace-by-index, frontend should send a flag or same field names.
-      const newImages = [];
-      ['image1', 'image2', 'image3', 'image4'].forEach((field, idx) => {
-        if (req.files && req.files[field] && req.files[field][0]) {
-          // if user already had an image at this idx, delete old one
-          if (user.images[idx]) {
-            safeUnlink(user.images[idx]);
-            user.images[idx] = req.files[field][0].filename;
-          } else {
-            user.images.push(req.files[field][0].filename);
-          }
-        }
-      });
-
-      await user.save();
-      const resp = user.toObject();
-      delete resp.password;
-      res.json({ success: true, user: resp });
-    } catch (e) {
-      console.error('updateUser error', e);
-      res.status(500).json({ success: false, message: 'Server error' });
+    if (password) {
+      const hashed = await bcrypt.hash(password, 10);
+      user.password = hashed;
     }
-  });
+
+    // photoKeys handling:
+    // - if replaceImages === 'true' (or boolean true), we replace user.images with provided keys
+    // - otherwise, append provided keys to existing images array
+    if (photoKeys) {
+      const keysArray = Array.isArray(photoKeys) ? photoKeys : [photoKeys];
+      if (replaceImages === 'true' || replaceImages === true) {
+        user.images = keysArray;
+      } else {
+        user.images = user.images.concat(keysArray.filter(Boolean));
+      }
+    }
+
+    await user.save();
+    const resp = user.toObject();
+    delete resp.password;
+    res.json({ success: true, user: resp });
+  } catch (err) {
+    console.error('updateUser error', err);
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
 };
 
+// ===== deleteUserDebug =====
+// Deletes user AND attempt to delete their S3 objects if images look like S3 keys.
+const deleteUserDebug = async (req, res) => {
+  try {
+    const { id } = req.params;
+    if (!mongoose.Types.ObjectId.isValid(id)) return res.status(400).json({ success: false, message: 'Invalid user id' });
 
-// const deleteUser = async (req, res) => {
-//   try {
-//     const { id } = req.params;
+    const user = await User.findById(id);
+    if (!user) return res.status(404).json({ success: false, message: 'User not found' });
 
-//     // 1. validate id (prevents CastError)
-//     if (!mongoose.Types.ObjectId.isValid(id)) {
-//       return res.status(400).json({ success: false, message: "Invalid user id" });
-//     }
+    // delete images: if S3 key -> delete from S3, otherwise attempt local unlink
+    if (Array.isArray(user.images) && user.images.length) {
+      await Promise.all(user.images.map(async img => {
+        try {
+          if (typeof img === 'string' && img.startsWith('uploads/')) {
+            await deleteS3Key(img);
+          } else {
+            await safeUnlink(img);
+          }
+        } catch (e) {
+          console.warn('delete image error:', e?.message || e);
+        }
+      }));
+    }
 
-//     // 2. fetch user
-//     const user = await User.findById(id);
-//     if (!user) {
-//       return res.status(404).json({ success: false, message: "User not found" });
-//     }
-
-//     // 3. delete stored files (if any) safely
-//     if (Array.isArray(user.images) && user.images.length > 0) {
-//       // If your stored entries are file names (e.g. "uploads/img.jpg") adapt accordingly.
-//       await Promise.all(user.images.map((img) => safeUnlink(img).catch(() => {})));
-//     }
-
-//     // 4. delete user from DB
-//     await User.findByIdAndDelete(id); // atomic delete
-
-//     // 5. respond
-//     return res.json({ success: true, message: "User deleted" });
-//   } catch (e) {
-//     console.error("deleteUser error", e);
-//     // dev: include e.message or stack if you want more info in dev responses
-//     return res.status(500).json({ success: false, message: "Server error while deleting user" });
-//   }
-// };
-
+    await User.findByIdAndDelete(id);
+    res.json({ success: true, message: 'User deleted' });
+  } catch (err) {
+    console.error('deleteUserDebug error', err);
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
+};
 
 module.exports = {
   registerUser,
