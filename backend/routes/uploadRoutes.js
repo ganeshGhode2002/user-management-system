@@ -30,7 +30,7 @@ router.post('/upload', upload.single('image'), async (req, res) => {
       Key: key,
       Body: req.file.buffer,
       ContentType: req.file.mimetype,
-      ACL: 'public-read' // public so frontend can load image directly
+      // ACL: 'public-read' // public so frontend can load image directly
     };
 
     const parallelUpload = new Upload({ client: s3, params: uploadParams });
