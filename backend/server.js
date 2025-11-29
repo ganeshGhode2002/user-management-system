@@ -1,70 +1,95 @@
 // server.js
-const express = require('express');
-const dotenv = require('dotenv');
-const path = require('path');
-const cors = require('cors');
+const express = require("express");
+const dotenv = require("dotenv");
+const path = require("path");
+const cors = require("cors");
 
-dotenv.config(); // load .env
+dotenv.config(); // Load .env
 
-const connectDB = require('./config/db');
-const userRoutes = require('./routes/userRoutes');
-const uploadRoutes = require('./routes/uploadRoutes');
+const connectDB = require("./config/db");
+const userRoutes = require("./routes/userRoutes");
+const uploadRoutes = require("./routes/uploadRoutes");
 
 const app = express();
 
-// connect DB
+// Connect DB
 connectDB(process.env.MONGO_URI);
 
-// middlewares
+// Middlewares
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// CORS: allow frontend origin (must be before routes)
-const CLIENT_URL = process.env.CLIENT_URL || process.env.CLIENT_URLS || 'http://localhost:5173';
-app.use(cors({
-  origin: (origin, callback) => {
-    // allow non-browser requests
-    if (!origin) return callback(null, true);
-    // allow single origin string or comma-separated list
-    const allowed = (process.env.CLIENT_URLS || CLIENT_URL || '').split(',').map(s => s.trim()).filter(Boolean);
-    if (allowed.includes(origin)) return callback(null, true);
-    // fallback: allow if exact match to CLIENT_URL
-    if (origin === CLIENT_URL) return callback(null, true);
-    return callback(new Error(`CORS not allowed: ${origin}`), false);
-  },
-  credentials: true,
-  methods: ['GET','POST','PUT','DELETE','OPTIONS'],
-  allowedHeaders: ['Content-Type','Authorization','Accept']
-}));
+/* ------------------------------------------------------------
+   CORS CONFIGURATION (FINAL + PRODUCTION READY)
+------------------------------------------------------------ */
 
-// If you still want to serve local uploads (not needed with S3), keep it.
-// If using only S3 you can remove this line safely.
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+// CLIENT_URLS = "https://app1.vercel.app,https://app2.vercel.app,http://localhost:5173"
+const rawOrigins = process.env.CLIENT_URLS || "";
+const allowedOrigins = rawOrigins
+  .split(",")
+  .map((o) => o.trim())
+  .filter(Boolean);
 
-// routes (upload route must be registered after CORS)
-app.use('/api', uploadRoutes);
-app.use('/api/users', userRoutes);
+console.log("🔗 Allowed Origins:", allowedOrigins);
 
-// health check
-app.get('/', (req, res) => res.send('Server is up'));
+app.use(
+  cors({
+    origin: function (origin, callback) {
+      // Allow server-to-server, Postman, curl (no origin)
+      if (!origin) return callback(null, true);
 
-// 404 handler
-app.use((req, res, next) => {
-  res.status(404).json({ success: false, message: 'Route not found' });
+      if (allowedOrigins.includes(origin)) {
+        return callback(null, true);
+      }
+
+      console.log("⛔ Blocked by CORS:", origin);
+      return callback(new Error("CORS not allowed: " + origin), false);
+    },
+    credentials: true,
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization", "Accept"],
+  })
+);
+
+// NOTE: Local uploads not used with S3. Keep only if using old local storage.
+// app.use("/uploads", express.static(path.join(__dirname, "uploads")));
+
+/* ------------------------------------------------------------
+   ROUTES
+------------------------------------------------------------ */
+
+app.use("/api", uploadRoutes); // S3 upload route
+app.use("/api/users", userRoutes); // Users CRUD
+
+// Health check
+app.get("/", (req, res) => res.send("Server is up 🚀"));
+
+/* ------------------------------------------------------------
+   404 Handler
+------------------------------------------------------------ */
+app.use((req, res) => {
+  res.status(404).json({ success: false, message: "Route not found" });
 });
 
-// error handler (central)
+/* ------------------------------------------------------------
+   ERROR HANDLER (Central)
+------------------------------------------------------------ */
 app.use((err, req, res, next) => {
-  console.error('Unhandled error:', err && err.message ? err.message : err);
-  // if CORS error created above, send a helpful message
-  if (err && err.message && err.message.startsWith('CORS not allowed')) {
+  console.error("🔥 Unhandled Error:", err.message || err);
+
+  // CORS Error
+  if (err.message && err.message.startsWith("CORS not allowed")) {
     return res.status(403).json({ success: false, message: err.message });
   }
-  res.status(500).json({ success: false, message: 'Server error' });
+
+  res.status(500).json({ success: false, message: "Server error" });
 });
 
+/* ------------------------------------------------------------
+   START SERVER
+------------------------------------------------------------ */
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
-  console.log(`🔗 Client allowed origin(s): ${process.env.CLIENT_URLS || CLIENT_URL}`);
+  console.log(`🌐 Listening for frontend origins: ${allowedOrigins.join(", ")}`);
 });
