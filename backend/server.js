@@ -7,7 +7,7 @@ dotenv.config(); // load .env
 
 const connectDB = require('./config/db');
 const userRoutes = require('./routes/userRoutes');
-
+const uploadRoutes = require('./routes/uploadRoutes');
 const app = express();
 
 // connect DB
@@ -16,7 +16,7 @@ connectDB(process.env.MONGO_URI);
 // middlewares
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-
+app.use('/api', uploadRoutes);
 // CORS: allow frontend origin
 const CLIENT_URL = process.env.CLIENT_URL || 'http://localhost:5173';
 app.use(cors({ origin: CLIENT_URL, credentials: true }));
