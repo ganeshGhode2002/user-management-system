@@ -82,19 +82,8 @@
 // src/api/axios.js
 import axios from "axios";
 
-/* ---------------------------------------------
-   ENV HANDLING (CLEAN & SAFE)
----------------------------------------------- */
-/**
- * Priority:
- * 1. VITE_API_URL (e.g. https://your-frontend-or-server/api)
- * 2. VITE_SERVER_URL  (e.g. https://your-server)
- * 3. FALLBACK to Render URL (production)
- *
- * Always strip trailing slashes.
- */
 const RENDER_SERVER_FALLBACK = "https://user-management-system-4ttm.onrender.com";
-
+                                
 const rawApiUrl = import.meta.env.VITE_API_URL;
 const rawServerUrl = import.meta.env.VITE_SERVER_URL;
 

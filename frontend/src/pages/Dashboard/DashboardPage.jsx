@@ -62,17 +62,35 @@ export default function DashboardPage() {
   }, [location]);
 
   // Fetch Users
-  async function load() {
-    setLoading(true);
-    try {
-      const res = await API.get("/users");
-      setUsers(Array.isArray(res.data) ? res.data : res.data?.data || []);
-    } catch (err) {
-      toast.error("Failed to load users");
-    } finally {
-      setLoading(false);
-    }
+  // async function load() {
+  //   setLoading(true);
+  //   try {
+  //     const res = await API.get("/users");
+  //     setUsers(Array.isArray(res.data) ? res.data : res.data?.data || []);
+  //   } catch (err) {
+  //     toast.error("Failed to load users");
+  //   } finally {
+  //     setLoading(false);
+  //   }
+  // }
+
+async function load() {
+  setLoading(true);
+  try {
+    const res = await API.get("/users");
+    // axios -> res.data is expected shape: { success: true, users: [...] }
+    // fallback to res.data.data for other shapes
+    const users = res?.data?.users ?? res?.data?.data ?? [];
+    console.log("Loaded users (count):", Array.isArray(users) ? users.length : 0);
+    console.log("Loaded users (sample):", Array.isArray(users) ? users.slice(0,5) : users);
+    setUsers(Array.isArray(users) ? users : []);
+  } catch (err) {
+    console.error("load users error:", err?.response?.data ?? err);
+    toast.error(err?.response?.data?.message || "Failed to load users");
+  } finally {
+    setLoading(false);
   }
+}
 
   useEffect(() => {
     load();

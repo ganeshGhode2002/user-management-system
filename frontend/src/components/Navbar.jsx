@@ -48,9 +48,9 @@ export default function Navbar() {
             <Button
               variant="outline"
               size="sm"
-              onClick={() => navigate(`/profile/${user._id}`)}
+              onClick={() => navigate(`/dashboard`)}
             >
-              Profile
+              Dashboard
             </Button>
 
             <Button
