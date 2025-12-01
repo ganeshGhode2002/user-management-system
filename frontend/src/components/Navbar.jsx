@@ -54,7 +54,7 @@ export default function Navbar() {
             </Button>
 
             <Button
-                 
+
               size="sm"
               onClick={handleLogout}
             >
