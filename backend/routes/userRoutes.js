@@ -30,6 +30,6 @@ router.post('/login', userController.loginUser);
 router.get('/', userController.getUsers);
 router.get('/:id', userController.getUserById);
 router.put('/:id', userController.updateUser);
-router.delete('/:id/debug', userController.deleteUserDebug); // debug version
+router.delete('/:id', userController.deleteUserDebug); // debug version
 
 module.exports = router;
