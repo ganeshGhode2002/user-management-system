@@ -1,10 +1,8 @@
-// server.js
 const express = require("express");
 const dotenv = require("dotenv");
-const path = require("path");
 const cors = require("cors");
 
-dotenv.config(); // Load .env
+dotenv.config();
 
 const connectDB = require("./config/db");
 const userRoutes = require("./routes/userRoutes");
@@ -20,10 +18,8 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 /* ------------------------------------------------------------
-   CORS CONFIGURATION (FINAL + PRODUCTION READY)
+   CORS CONFIGURATION
 ------------------------------------------------------------ */
-
-// CLIENT_URLS = "https://app1.vercel.app,https://app2.vercel.app,http://localhost:5173"
 const rawOrigins = process.env.CLIENT_URLS || "";
 const allowedOrigins = rawOrigins
   .split(",")
@@ -32,55 +28,97 @@ const allowedOrigins = rawOrigins
 
 console.log("🔗 Allowed Origins:", allowedOrigins);
 
-app.use(
-  cors({
-    origin: function (origin, callback) {
-      // Allow server-to-server, Postman, curl (no origin)
-      if (!origin) return callback(null, true);
+// Simple CORS - allow all in development, specific in production
+if (process.env.NODE_ENV === "production") {
+  app.use(
+    cors({
+      origin: function (origin, callback) {
+        if (!origin || allowedOrigins.includes(origin)) {
+          callback(null, true);
+        } else {
+          console.log("⛔ Blocked by CORS:", origin);
+          callback(new Error("CORS not allowed"));
+        }
+      },
+      credentials: true,
+    })
+  );
+} else {
+  // Development - allow all
+  app.use(cors());
+}
 
-      if (allowedOrigins.includes(origin)) {
-        return callback(null, true);
-      }
-
-      console.log("⛔ Blocked by CORS:", origin);
-      return callback(new Error("CORS not allowed: " + origin), false);
-    },
-    credentials: true,
-    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization", "Accept"],
-  })
-);
-
+// Request logging middleware
+app.use((req, res, next) => {
+  console.log(`📥 ${req.method} ${req.originalUrl}`);
+  next();
+});
 
 /* ------------------------------------------------------------
    ROUTES
 ------------------------------------------------------------ */
+console.log("🔧 Mounting routes...");
 
-app.use("/api/upload", uploadRoutes); // S3 upload route
-app.use("/api/users", userRoutes); // Users CRUD
+// Upload routes - MUST be before user routes
+app.use("/api/upload", uploadRoutes);
+console.log("  ✅ Upload routes mounted at /api/upload");
+
+// User routes
+app.use("/api/users", userRoutes);
+console.log("  ✅ User routes mounted at /api/users");
 
 // Health check
-app.get("/", (req, res) => res.send("Server is up 🚀"));
+app.get("/", (req, res) => {
+  res.json({ 
+    status: "Server is up 🚀",
+    endpoints: {
+      upload: "POST /api/upload",
+      users: "GET /api/users",
+      userById: "GET /api/users/:id"
+    }
+  });
+});
+
+// Debug endpoint
+app.get("/api/debug", (req, res) => {
+  res.json({
+    uploadEndpoint: "POST /api/upload",
+    userEndpoint: "/api/users",
+    environment: process.env.NODE_ENV || "development",
+    s3Bucket: process.env.S3_BUCKET ? "configured" : "missing"
+  });
+});
 
 /* ------------------------------------------------------------
    404 Handler
 ------------------------------------------------------------ */
-app.use((req, res) => {
-  res.status(404).json({ success: false, message: "Route not found" });
+app.use("*", (req, res) => {
+  console.log(`❌ 404: ${req.method} ${req.originalUrl}`);
+  res.status(404).json({ 
+    success: false, 
+    message: "Route not found",
+    requested: `${req.method} ${req.originalUrl}`
+  });
 });
 
 /* ------------------------------------------------------------
-   ERROR HANDLER (Central)
+   ERROR HANDLER
 ------------------------------------------------------------ */
 app.use((err, req, res, next) => {
-  console.error("🔥 Unhandled Error:", err.message || err);
-
-  // CORS Error
-  if (err.message && err.message.startsWith("CORS not allowed")) {
-    return res.status(403).json({ success: false, message: err.message });
+  console.error("🔥 Server Error:", err.message || err);
+  
+  if (err.message && err.message.includes("CORS")) {
+    return res.status(403).json({ 
+      success: false, 
+      message: "CORS error: " + err.message 
+    });
   }
-
-  res.status(500).json({ success: false, message: "Server error" });
+  
+  res.status(500).json({ 
+    success: false, 
+    message: "Internal server error",
+    ...(process.env.NODE_ENV === "development" && { error: err.message })
+  });
 });
 
 /* ------------------------------------------------------------
@@ -89,5 +127,7 @@ app.use((err, req, res, next) => {
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
-  console.log(`🌐 Listening for frontend origins: ${allowedOrigins.join(", ")}`);
+  console.log(`📁 Upload: POST /api/upload`);
+  console.log(`👤 Users: /api/users`);
+  console.log(`🌐 CORS: ${allowedOrigins.length > 0 ? allowedOrigins.join(", ") : "All origins (development)"}`);
 });
