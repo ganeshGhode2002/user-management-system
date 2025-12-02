@@ -51,14 +51,12 @@ app.use(
   })
 );
 
-// NOTE: Local uploads not used with S3. Keep only if using old local storage.
-// app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
 /* ------------------------------------------------------------
    ROUTES
 ------------------------------------------------------------ */
 
-app.use("/api", uploadRoutes); // S3 upload route
+app.use("/api/upload", uploadRoutes); // S3 upload route
 app.use("/api/users", userRoutes); // Users CRUD
 
 // Health check
