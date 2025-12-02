@@ -45,7 +45,7 @@ export default function ProfilePage() {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
 
- 
+
 
 
   useEffect(() => {
@@ -72,7 +72,7 @@ export default function ProfilePage() {
     return () => (mounted = false);
   }, [id, navigate]);
 
- 
+
 
   if (loading) {
     return (
@@ -90,11 +90,12 @@ export default function ProfilePage() {
     );
   }
 
-  // derive image URLs (if images stored as filenames)
-  const images = Array.isArray(user.images) ? user.images.filter(Boolean) : [];
-  const imageUrls = images.map((img) => (img.startsWith("http") ? img : `${SERVER_BASE}/uploads/${img}`));
-  const primary = imageUrls[0] || user.avatarUrl || null;
 
+  const imageUrls = Array.isArray(user.photos) ? user.photos.filter(Boolean) : [];
+  const primary = imageUrls[0] || user.avatarUrl || null;
+  // console.log("Images array:", images);
+  console.log("SERVER_BASE:", SERVER_BASE);
+  console.log("Primary:", primary);
   return (
     <div className="max-w-5xl mx-auto px-4 py-8 space-y-8">
       {/* HERO section with big photo */}
@@ -102,12 +103,12 @@ export default function ProfilePage() {
         <HeroAvatar src={primary} name={user.name || user.email} size={180} />
 
         <div className="mt-6 text-center">
-         
+
           <p className="text-sm text-slate-500 mt-1">{user.role || "User"}</p>
 
           <div className="mt-4 flex justify-center gap-3">
-           
-            <Button  variant="outline" onClick={() => navigate("/dashboard")}>Back</Button>
+
+            <Button variant="outline" onClick={() => navigate("/dashboard")}>Back</Button>
           </div>
         </div>
       </div>
@@ -173,9 +174,9 @@ export default function ProfilePage() {
         </div>
       </div>
 
-    
 
-      
+
+
     </div>
   );
 }
