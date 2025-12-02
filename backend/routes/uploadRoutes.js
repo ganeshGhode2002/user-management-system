@@ -29,7 +29,7 @@ async function makePresignedGetUrl(bucket, key, expiresInSeconds = 3600) {
 
 // POST /api/upload
 // expects form-data with field name "image"
-router.post('/upload', upload.single('image'), async (req, res) => {
+router.post('/', upload.single('image'), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
 
@@ -56,7 +56,11 @@ router.post('/upload', upload.single('image'), async (req, res) => {
   } catch (err) {
     console.error('S3 upload error', err);
     // be slightly more verbose to help debugging
-    return res.status(500).json({ error: 'Upload failed', details: err?.message || String(err) });
+    return res.status(500).json({
+      success: false, // ← ADD THIS
+      error: 'Upload failed',
+      details: err?.message || String(err)
+    });
   }
 });
 
