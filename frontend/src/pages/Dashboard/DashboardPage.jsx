@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { useNavigate, useLocation } from "react-router-dom";
 import { Trash2 } from "lucide-react";
 
+const PAGE_SIZES = [10, 20, 50, 100];
 function Avatar({ name = "", size = 40 }) {
   const initials =
     (name
