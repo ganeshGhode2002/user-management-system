@@ -1,4 +1,3 @@
-// src/pages/Profile/ProfilePage.jsx
 import React, { useEffect, useState, useContext, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import API, { SERVER_BASE } from "@/api/axios";
