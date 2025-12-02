@@ -92,12 +92,20 @@ app.get("/api/debug", (req, res) => {
 /* ------------------------------------------------------------
    404 Handler
 ------------------------------------------------------------ */
-app.use("*", (req, res) => {
+app.use((req, res) => {
   console.log(`❌ 404: ${req.method} ${req.originalUrl}`);
   res.status(404).json({ 
     success: false, 
     message: "Route not found",
-    requested: `${req.method} ${req.originalUrl}`
+    requested: `${req.method} ${req.originalUrl}`,
+    availableEndpoints: {
+      upload: "POST /api/upload",
+      users: "GET /api/users",
+      getUser: "GET /api/users/:id",
+      updateUser: "PUT /api/users/:id",
+      deleteUser: "DELETE /api/users/:id",
+      debug: "GET /api/debug"
+    }
   });
 });
 
