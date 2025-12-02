@@ -295,7 +295,7 @@ export default function RegisterPage() {
           <Button
             type="submit"
             disabled={loading}
-            className="w-full py-3 mt-4"
+            className="w-full bg-blue-600 text-white py-3 mt-4"
           >
             {loading ? "Creating account..." : "Create account"}
           </Button>

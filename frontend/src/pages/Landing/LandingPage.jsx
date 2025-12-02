@@ -3,11 +3,11 @@ import { Link } from "react-router-dom";
 
 export default function LandingPage() {
   return (
-    <div className="min-h-[72vh] flex items-center justify-center bg-gradient-to-b from-slate-50 to-white">
-      <div className="max-w-6xl mx-auto px-6 py-12 lg:py-20">
+    <div className="min-h-[72vh] flex items-center justify-center bg-linear-to-b from-slate-50 to-white">
+      <div className="max-w-6xl mx-auto px-6  lg:py-20">
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 items-center">
           {/* Left */}
-          <div className="space-y-6">
+          <div className="space-y-1">
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-50 text-indigo-600 text-sm font-medium">
               <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" aria-hidden>
                 <path d="M12 2v4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
